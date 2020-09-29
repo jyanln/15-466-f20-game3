@@ -12,10 +12,24 @@ struct PlayMode : Mode {
 	PlayMode();
 	virtual ~PlayMode();
 
+  struct Object {
+    Scene::Transform* self = nullptr;
+
+    glm::vec3 velocity;
+
+    std::shared_ptr<Sound::PlayingSample> sound;
+  } asteroid0, asteroid1, asteroid2;
+
 	//functions called by main loop:
 	virtual bool handle_event(SDL_Event const &, glm::uvec2 const &window_size) override;
 	virtual void update(float elapsed) override;
 	virtual void draw(glm::uvec2 const &drawable_size) override;
+
+  virtual void setup();
+  virtual void spawn_object(int type);
+
+  static constexpr float ship_speed = 1.0f;
+  static constexpr float asteroid_speed = 10.0f;
 
 	//----- game state -----
 
@@ -23,26 +37,24 @@ struct PlayMode : Mode {
 	struct Button {
 		uint8_t downs = 0;
 		uint8_t pressed = 0;
-	} left, right, down, up;
+	} left, right, down, up, boost, brake;
 
 	//local copy of the game scene (so code can change it during gameplay):
 	Scene scene;
 
-	//hexapod leg to wobble:
-	Scene::Transform *hip = nullptr;
-	Scene::Transform *upper_leg = nullptr;
-	Scene::Transform *lower_leg = nullptr;
-	glm::quat hip_base_rotation;
-	glm::quat upper_leg_base_rotation;
-	glm::quat lower_leg_base_rotation;
-	float wobble = 0.0f;
+	Scene::Transform *miner = nullptr;
 
-	glm::vec3 get_leg_tip_position();
+  float brightness = 1.0f;
 
-	//music coming from the tip of the leg (as a demonstration):
-	std::shared_ptr< Sound::PlayingSample > leg_tip_loop;
-	
+  glm::vec3 miner_pos = glm::vec3(0.f, 0.f, 0.f);
+
+  bool running = true;
+
+  float score = 0;
+
+  float countdown1 = 2.5f;
+  float countdown2 = 5.f;
+
 	//camera:
 	Scene::Camera *camera = nullptr;
-
 };

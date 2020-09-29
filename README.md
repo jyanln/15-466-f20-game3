@@ -1,8 +1,8 @@
-# (TODO: your game's title)
+# The only sound in space is simulated
 
-Author: (TODO: your name)
+Author: Jonathan Yan
 
-Design: (TODO: In two sentences or fewer, describe what is new and interesting about your game.)
+Design: Dodge the asteroids, and as the screen fades black, use the sounds emitted by the asteroids to keep dodging!
 
 Screen Shot:
 
@@ -10,9 +10,12 @@ Screen Shot:
 
 How To Play:
 
-(TODO: describe the controls and (if needed) goals/strategy.)
+WASD to move. Space to restart.
 
-Sources: (TODO: list a source URL for any assets you did not create yourself. Make sure you have a license for the asset.)
+Sources:
+https://www.kenney.nl/assets/space-kit - Spaceship model
+Blender default isosphere - Asteroids
+Selfmade - Asteroid sound
 
 This game was built with [NEST](NEST.md).
 

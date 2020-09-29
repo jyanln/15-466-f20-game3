@@ -10,25 +10,28 @@
 
 #include <glm/gtc/type_ptr.hpp>
 
+#define _USE_MATH_DEFINES
+
+#include <cmath>
 #include <random>
 
-GLuint hexapod_meshes_for_lit_color_texture_program = 0;
-Load< MeshBuffer > hexapod_meshes(LoadTagDefault, []() -> MeshBuffer const * {
-	MeshBuffer const *ret = new MeshBuffer(data_path("hexapod.pnct"));
-	hexapod_meshes_for_lit_color_texture_program = ret->make_vao_for_program(lit_color_texture_program->program);
+GLuint space_meshes_for_lit_color_texture_program = 0;
+Load< MeshBuffer > space_meshes(LoadTagDefault, []() -> MeshBuffer const * {
+	MeshBuffer const *ret = new MeshBuffer(data_path("space.pnct"));
+	space_meshes_for_lit_color_texture_program = ret->make_vao_for_program(lit_color_texture_program->program);
 	return ret;
 });
 
-Load< Scene > hexapod_scene(LoadTagDefault, []() -> Scene const * {
-	return new Scene(data_path("hexapod.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name){
-		Mesh const &mesh = hexapod_meshes->lookup(mesh_name);
+Load< Scene > space_scene(LoadTagDefault, []() -> Scene const * {
+	return new Scene(data_path("space.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name){
+		Mesh const &mesh = space_meshes->lookup(mesh_name);
 
 		scene.drawables.emplace_back(transform);
 		Scene::Drawable &drawable = scene.drawables.back();
 
 		drawable.pipeline = lit_color_texture_program_pipeline;
 
-		drawable.pipeline.vao = hexapod_meshes_for_lit_color_texture_program;
+		drawable.pipeline.vao = space_meshes_for_lit_color_texture_program;
 		drawable.pipeline.type = mesh.type;
 		drawable.pipeline.start = mesh.start;
 		drawable.pipeline.count = mesh.count;
@@ -36,35 +39,82 @@ Load< Scene > hexapod_scene(LoadTagDefault, []() -> Scene const * {
 	});
 });
 
-Load< Sound::Sample > dusty_floor_sample(LoadTagDefault, []() -> Sound::Sample const * {
-	return new Sound::Sample(data_path("dusty-floor.opus"));
+#define _USE_MATH_DEFINES
+
+#include <cmath>
+Load< Sound::Sample > asteroid_sample(LoadTagDefault, []() -> Sound::Sample const * {
+	return new Sound::Sample(data_path("asteroid.opus"));
 });
 
-PlayMode::PlayMode() : scene(*hexapod_scene) {
+PlayMode::PlayMode() : scene(*space_scene) {
 	//get pointers to leg for convenience:
 	for (auto &transform : scene.transforms) {
-		if (transform.name == "Hip.FL") hip = &transform;
-		else if (transform.name == "UpperLeg.FL") upper_leg = &transform;
-		else if (transform.name == "LowerLeg.FL") lower_leg = &transform;
+		if (transform.name == "craft_miner") miner = &transform;
+		else if (transform.name == "Icosphere0") asteroid0.self = &transform;
+		else if (transform.name == "Icosphere1") asteroid1.self = &transform;
+		else if (transform.name == "Icosphere2") asteroid2.self = &transform;
 	}
-	if (hip == nullptr) throw std::runtime_error("Hip not found.");
-	if (upper_leg == nullptr) throw std::runtime_error("Upper leg not found.");
-	if (lower_leg == nullptr) throw std::runtime_error("Lower leg not found.");
-
-	hip_base_rotation = hip->rotation;
-	upper_leg_base_rotation = upper_leg->rotation;
-	lower_leg_base_rotation = lower_leg->rotation;
+	if (miner == nullptr) throw std::runtime_error("Miner not found.");
+	if (asteroid0.self == nullptr) throw std::runtime_error("Asteroid 0 not found.");
+	if (asteroid1.self == nullptr) throw std::runtime_error("Asteroid 1 not found.");
+	if (asteroid2.self == nullptr) throw std::runtime_error("Asteroid 2 not found.");
 
 	//get pointer to camera for convenience:
 	if (scene.cameras.size() != 1) throw std::runtime_error("Expecting scene to have exactly one camera, but it has " + std::to_string(scene.cameras.size()));
 	camera = &scene.cameras.front();
 
-	//start music loop playing:
-	// (note: position will be over-ridden in update())
-	leg_tip_loop = Sound::loop_3D(*dusty_floor_sample, 1.0f, get_leg_tip_position(), 10.0f);
+  setup();
 }
 
 PlayMode::~PlayMode() {
+}
+
+void PlayMode::setup() {
+  brightness = 1.0f;
+  spawn_object(0);
+  asteroid1.self->position = glm::vec3(1000.f, 0.f, 1000.f);
+  asteroid2.self->position = glm::vec3(1000.f, 0.f, 1000.f);
+
+  // Set constant camera and ship orientation
+  miner->position = glm::vec3(0.f, 0.f, 0.f);
+  camera->transform->position = glm::vec3(0.f, 20.f, 3.f);
+
+  // Set default camera and ship rotation
+  miner->rotation = glm::quat(sqrt(2) / 2, sqrt(2) / 2, 0.0f, 0.0f);
+  camera->transform->rotation = glm::quat(sqrt(2) / 2, sqrt(2) / 2, 0.0f, 0.0f) * glm::angleAxis(float(M_PI), glm::vec3(0.f, 1.f, 0.f)) * glm::angleAxis(-float(M_PI) * 0.05f, glm::vec3(1.f, 0.f, 0.f));
+
+  score = 0;
+  running = true;
+}
+
+void PlayMode::spawn_object(int type) {
+  static std::mt19937 mt;
+
+  if(type == 0) {
+    asteroid0.self->position = glm::vec3(0.f, -60.f, 0.f);
+    float dest_x = (mt() / float(mt.max())) * 14.f - 7.f;
+    float dest_z = (mt() / float(mt.max())) * 7.f - 3.5f;
+
+    asteroid0.velocity = glm::normalize(glm::vec3(dest_x, 0.f, dest_z) - asteroid0.self->position) * asteroid_speed;
+
+    asteroid0.sound = Sound::loop_3D(*asteroid_sample, 1.0f, asteroid0.self->position, 20.f);
+  } else if(type == 1) {
+    asteroid1.self->position = glm::vec3(0.f, -60.f, 0.f);
+    float dest_x = (mt() / float(mt.max())) * 14.f - 7.f;
+    float dest_z = (mt() / float(mt.max())) * 7.f - 3.5f;
+
+    asteroid1.velocity = glm::normalize(glm::vec3(dest_x, 0.f, dest_z) - asteroid1.self->position) * asteroid_speed;
+
+    asteroid1.sound = Sound::loop_3D(*asteroid_sample, 1.0f, asteroid1.self->position, 20.f);
+  } else if(type == 2) {
+    asteroid2.self->position = glm::vec3(0.f, -60.f, 0.f);
+    float dest_x = (mt() / float(mt.max())) * 14.f - 7.f;
+    float dest_z = (mt() / float(mt.max())) * 7.f - 3.5f;
+
+    asteroid2.velocity = glm::normalize(glm::vec3(dest_x, 0.f, dest_z) - asteroid2.self->position) * asteroid_speed;
+
+    asteroid2.sound = Sound::loop_3D(*asteroid_sample, 1.0f, asteroid2.self->position, 20.f);
+  }
 }
 
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
@@ -89,7 +139,12 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			down.downs += 1;
 			down.pressed = true;
 			return true;
-		}
+		} else if (evt.key.keysym.sym == SDLK_SPACE) {
+      if(!running) {
+        setup();
+      }
+      return true;
+    }
 	} else if (evt.type == SDL_KEYUP) {
 		if (evt.key.keysym.sym == SDLK_a) {
 			left.pressed = false;
@@ -104,75 +159,69 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			down.pressed = false;
 			return true;
 		}
-	} else if (evt.type == SDL_MOUSEBUTTONDOWN) {
-		if (SDL_GetRelativeMouseMode() == SDL_FALSE) {
-			SDL_SetRelativeMouseMode(SDL_TRUE);
-			return true;
-		}
-	} else if (evt.type == SDL_MOUSEMOTION) {
-		if (SDL_GetRelativeMouseMode() == SDL_TRUE) {
-			glm::vec2 motion = glm::vec2(
-				evt.motion.xrel / float(window_size.y),
-				-evt.motion.yrel / float(window_size.y)
-			);
-			camera->transform->rotation = glm::normalize(
-				camera->transform->rotation
-				* glm::angleAxis(-motion.x * camera->fovy, glm::vec3(0.0f, 1.0f, 0.0f))
-				* glm::angleAxis(motion.y * camera->fovy, glm::vec3(1.0f, 0.0f, 0.0f))
-			);
-			return true;
-		}
 	}
 
 	return false;
 }
 
 void PlayMode::update(float elapsed) {
+  if(!running) return;
 
-	//slowly rotates through [0,1):
-	wobble += elapsed / 10.0f;
-	wobble -= std::floor(wobble);
+  score += elapsed;
 
-	hip->rotation = hip_base_rotation * glm::angleAxis(
-		glm::radians(5.0f * std::sin(wobble * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 1.0f, 0.0f)
-	);
-	upper_leg->rotation = upper_leg_base_rotation * glm::angleAxis(
-		glm::radians(7.0f * std::sin(wobble * 2.0f * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 0.0f, 1.0f)
-	);
-	lower_leg->rotation = lower_leg_base_rotation * glm::angleAxis(
-		glm::radians(10.0f * std::sin(wobble * 3.0f * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 0.0f, 1.0f)
-	);
+  if(countdown1 > 0) {
+    countdown1 -= elapsed;
+    if(countdown1 <= 0) {
+      spawn_object(1);
+    }
+  }
+  if(countdown2 > 0) {
+    countdown2 -= elapsed;
+    if(countdown2 <= 0) {
+      spawn_object(2);
+    }
+  }
 
-	//move sound to follow leg tip position:
-	leg_tip_loop->set_position(get_leg_tip_position(), 1.0f / 60.0f);
+  brightness *= 0.998f;
+  if(brightness < 0.1) brightness = 0;
 
-	//move camera:
-	{
+  float miner_x = miner->position.x;
+  float miner_z = miner->position.z;
 
-		//combine inputs into a move:
-		constexpr float PlayerSpeed = 30.0f;
-		glm::vec2 move = glm::vec2(0.0f);
-		if (left.pressed && !right.pressed) move.x =-1.0f;
-		if (!left.pressed && right.pressed) move.x = 1.0f;
-		if (down.pressed && !up.pressed) move.y =-1.0f;
-		if (!down.pressed && up.pressed) move.y = 1.0f;
+  if(up.pressed && !down.pressed) {
+    miner_z += ship_speed * elapsed;
+  } else if(!up.pressed && down.pressed) {
+    miner_z -= ship_speed * elapsed;
+  }
 
-		//make it so that moving diagonally doesn't go faster:
-		if (move != glm::vec2(0.0f)) move = glm::normalize(move) * PlayerSpeed * elapsed;
+  if(left.pressed && !right.pressed) {
+    miner_x += ship_speed * elapsed;
+  } else if(!left.pressed && right.pressed) {
+    miner_x -= ship_speed * elapsed;
+  }
 
-		glm::mat4x3 frame = camera->transform->make_local_to_parent();
-		glm::vec3 right = frame[0];
-		//glm::vec3 up = frame[1];
-		glm::vec3 forward = -frame[2];
+  if(miner_x > 7.0f) miner_x = 7.0f;
+  else if(miner_x < -7.0f) miner_x = -7.0f;
+  if(miner_z > 3.5f) miner_z = 3.5f;
+  else if(miner_z < -3.5f) miner_z = -3.5f;
 
-		camera->transform->position += move.x * right + move.y * forward;
-	}
+  miner->position = glm::vec3(miner_x, 0.f, miner_z);
 
-	{ //update listener to camera position:
-		glm::mat4x3 frame = camera->transform->make_local_to_parent();
+  asteroid0.self->position += elapsed * asteroid0.velocity;
+  if(asteroid0.self->position.y > 20.f) spawn_object(0);
+  asteroid1.self->position += elapsed * asteroid1.velocity;
+  if(asteroid1.self->position.y > 20.f) spawn_object(1);
+  asteroid2.self->position += elapsed * asteroid2.velocity;
+  if(asteroid2.self->position.y > 20.f) spawn_object(2);
+
+  if(glm::distance(miner->position, asteroid0.self->position) < 1.5f ||
+  glm::distance(miner->position, asteroid1.self->position) < 1.5f ||
+  glm::distance(miner->position, asteroid2.self->position) < 1.5f) {
+    running = false;
+  }
+
+	{ //update listener to ship position:
+		glm::mat4x3 frame = miner->make_local_to_parent();
 		glm::vec3 right = frame[0];
 		glm::vec3 at = frame[3];
 		Sound::listener.set_position_right(at, right, 1.0f / 60.0f);
@@ -183,6 +232,8 @@ void PlayMode::update(float elapsed) {
 	right.downs = 0;
 	up.downs = 0;
 	down.downs = 0;
+	boost.downs = 0;
+	brake.downs = 0;
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
@@ -194,10 +245,10 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	glUseProgram(lit_color_texture_program->program);
 	glUniform1i(lit_color_texture_program->LIGHT_TYPE_int, 1);
 	glUniform3fv(lit_color_texture_program->LIGHT_DIRECTION_vec3, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f,-1.0f)));
-	glUniform3fv(lit_color_texture_program->LIGHT_ENERGY_vec3, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.95f)));
+	glUniform3fv(lit_color_texture_program->LIGHT_ENERGY_vec3, 1, glm::value_ptr(glm::vec3(1.0f * brightness, 1.0f * brightness, 0.95f * brightness)));
 	glUseProgram(0);
 
-	glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+	glClearColor(0.5f * brightness, 0.5f * brightness, 0.5f * brightness, 1.0f);
 	glClearDepth(1.0f); //1.0 is actually the default value to clear the depth buffer to, but FYI you can change it.
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -217,20 +268,15 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 		));
 
 		constexpr float H = 0.09f;
-		lines.draw_text("Mouse motion rotates camera; WASD moves; escape ungrabs mouse",
+		lines.draw_text("Score: " + std::to_string(score),
 			glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H, 0.0),
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
 			glm::u8vec4(0x00, 0x00, 0x00, 0x00));
 		float ofs = 2.0f / drawable_size.y;
-		lines.draw_text("Mouse motion rotates camera; WASD moves; escape ungrabs mouse",
+		lines.draw_text("Score: " + std::to_string(score),
 			glm::vec3(-aspect + 0.1f * H + ofs, -1.0 + + 0.1f * H + ofs, 0.0),
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
 			glm::u8vec4(0xff, 0xff, 0xff, 0x00));
 	}
 	GL_ERRORS();
-}
-
-glm::vec3 PlayMode::get_leg_tip_position() {
-	//the vertex position here was read from the model in blender:
-	return lower_leg->make_local_to_world() * glm::vec4(-1.26137f, -11.861f, 0.0f, 1.0f);
 }
